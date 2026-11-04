@@ -1,0 +1,78 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="CEMCO">
+<link rel="apple-touch-icon" href="icon-180.png"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#0b2545"><title>CEMCO Sales Tools</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:#eef1f6;color:#0b2545}
+header{background:#0b2545;color:#fff;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;display:flex;align-items:center;gap:10px}
+header img{height:30px;background:#fff;padding:3px 6px;border-radius:4px}header b{font-size:17px}
+nav{display:flex;background:#13315c}nav button{flex:1;padding:12px;border:0;background:none;color:#cfd8e6;font-size:15px;font-weight:600}nav button.on{color:#fff;border-bottom:3px solid #f2b705}
+main{padding:14px;padding-bottom:calc(env(safe-area-inset-bottom) + 20px)}.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px #0002}
+label{font-size:13px;font-weight:600;color:#445;display:block;margin:8px 0 4px}input{width:100%;font-size:18px;padding:11px;border:1px solid #bcc6d6;border-radius:8px}
+.res{max-height:240px;overflow:auto;border:1px solid #dde;border-radius:8px;margin-top:4px}.res div{padding:9px;border-bottom:1px solid #eee;font-size:14px}.res div:active{background:#e6ecf5}
+.code{font-weight:700}.sub{color:#667;font-size:12px}.flag{background:#fff3c4;color:#7a5a00;border-radius:4px;padding:1px 5px;font-size:11px;font-weight:700}
+.row{display:flex;gap:10px}.row>div{flex:1}.big{font-size:26px;font-weight:800}.btn{width:100%;padding:14px;font-size:17px;font-weight:700;border:0;border-radius:10px;background:#0b2545;color:#fff;margin-top:10px}.btn.alt{background:#5a6b85}
+.pages{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.pg{position:relative;border:3px solid transparent;border-radius:8px;background:#fff;overflow:hidden}.pg.sel{border-color:#f2b705}.pg canvas{width:100%;display:block}.pg span{position:absolute;top:4px;left:4px;background:#0b2545;color:#fff;font-size:12px;padding:2px 7px;border-radius:10px}
+.hide{display:none}small{color:#667}
+</style></head><body>
+<header><img src="logo.png" alt="CEMCO"><b>Sales Tools</b></header>
+<nav><button id="t1" class="on" onclick="tab(1)">Converter</button><button id="t2" onclick="tab(2)">Price Sheets</button></nav>
+<main>
+<section id="s1">
+<div class="card"><label>Product (nomenclature or description)</label><input id="q" placeholder="e.g. 362S162-33, 600T125-54, RC1" autocomplete="off" autocapitalize="characters">
+<div id="res" class="res hide"></div><div id="picked" style="margin-top:8px"></div>
+<label>lb/ft (auto-filled, or type for unlisted product)</label><input id="w" type="number" inputmode="decimal" step="any"></div>
+<div class="card"><div class="row"><div><label>$ / MLF</label><input id="mlf" type="number" inputmode="decimal" step="any"></div><div><label>$ / CWT</label><input id="cwt" type="number" inputmode="decimal" step="any"></div></div>
+<p class="sub">CWT = MLF ÷ (10 × lb/ft) &nbsp;·&nbsp; MLF = CWT × 10 × lb/ft</p><div id="out"></div></div>
+</section>
+<section id="s2" class="hide">
+<div class="card"><b id="sheetName">CEMCO November 2026 Price List</b><br><small>Tap pages to select, then share.</small>
+<div class="row" style="margin-top:8px"><button class="btn alt" style="margin:0" onclick="selAll(1)">Select all</button><button class="btn alt" style="margin:0" onclick="selAll(0)">Clear</button></div></div>
+<div id="pages" class="pages"></div>
+<div class="card" style="margin-top:12px"><label>Customer email</label><input id="em" type="email" inputmode="email" placeholder="customer@company.com" style="text-transform:none">
+<button class="btn" onclick="share()">Send selected pages</button><p id="msg" class="sub"></p></div>
+<div class="card"><b>Admin: upload new monthly sheet</b><br><small>Stored on this device only (v1 has no server). To update everyone's default, send the PDF to Steely Dan.</small>
+<input type="file" id="up" accept="application/pdf" style="font-size:14px;margin-top:8px"><button class="btn alt" onclick="resetSheet()">Revert to bundled November sheet</button></div>
+</section></main>
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const $=id=>document.getElementById(id);let P=[],cur=null,last='mlf';
+function tab(n){[1,2].forEach(i=>{$('s'+i).classList.toggle('hide',i!=n);$('t'+i).classList.toggle('on',i==n)});if(n==2&&!loaded)loadSheet()}
+fetch('products.json').then(r=>r.json()).then(d=>P=d);
+const norm=s=>s.toUpperCase().replace(/[^A-Z0-9]/g,'');
+$('q').oninput=()=>{const q=norm($('q').value);const r=$('res');if(q.length<2){r.classList.add('hide');return}
+ const m=P.filter(p=>norm(p.c).includes(q)||norm(p.d).includes(q)).slice(0,40);
+ r.innerHTML=m.map((p,i)=>`<div data-i="${P.indexOf(p)}"><span class="code">${p.c}</span> ${p.s?'<span class="flag">STAND-IN WT</span>':''}<br><span class="sub">${p.d} · ${p.w} lb/ft${p.p?' · Nov list $'+p.p+'/MLF':''}</span></div>`).join('')||'<div class="sub">No match — type lb/ft manually below</div>';
+ r.classList.remove('hide');r.querySelectorAll('[data-i]').forEach(e=>e.onclick=()=>pick(P[e.dataset.i]))};
+function pick(p){cur=p;$('res').classList.add('hide');$('q').value=p.c;$('w').value=p.w;
+ $('picked').innerHTML=`<b>${p.c}</b> — ${p.d}<br><span class="sub">${p.w} lb/ft · price sheet p.${p.pg}${p.p?' · <b>Nov list $'+p.p.toLocaleString()+'/MLF = $'+cwt(p.p,p.w).toFixed(2)+'/CWT</b>':''}</span>${p.s?'<br><span class="flag">STAND-IN WEIGHT</span> <span class="sub">No published weight found; estimated. Verify before quoting.</span>':''}`;calc()}
+const cwt=(m,w)=>m/(10*w),mlf=(c,w)=>c*10*w;
+function calc(){const w=+$('w').value;let o='';if(w>0){if(last=='mlf'&&$('mlf').value!=='')$('cwt').value=cwt(+$('mlf').value,w).toFixed(2);
+ else if(last=='cwt'&&$('cwt').value!=='')$('mlf').value=mlf(+$('cwt').value,w).toFixed(2);
+ if($('mlf').value)o=`<div class="big">$${(+$('cwt').value).toFixed(2)}/CWT</div><div>$${(+$('mlf').value).toFixed(2)}/MLF · $${(+$('cwt').value/100).toFixed(4)}/lb</div>`}
+ else if($('mlf').value||$('cwt').value)o='<span class="flag">Enter or pick lb/ft</span>';$('out').innerHTML=o}
+$('mlf').oninput=()=>{last='mlf';calc()};$('cwt').oninput=()=>{last='cwt';calc()};$('w').oninput=()=>{if(cur&&+$('w').value!=cur.w){cur=null;$('picked').innerHTML='<span class="sub">Manual lb/ft</span>'}calc()};
+// ---- price sheets
+let loaded=false,bytes=null,sel=new Set();
+function idb(){return new Promise(r=>{const q=indexedDB.open('cemco',1);q.onupgradeneeded=()=>q.result.createObjectStore('f');q.onsuccess=()=>r(q.result)})}
+async function iget(k){const d=await idb();return new Promise(r=>{const q=d.transaction('f').objectStore('f').get(k);q.onsuccess=()=>r(q.result)})}
+async function iput(k,v){const d=await idb();return new Promise(r=>{const t=d.transaction('f','readwrite');t.objectStore('f').put(v,k);t.oncomplete=r})}
+async function loadSheet(){loaded=true;const s=await iget('sheet');if(s){bytes=s.bytes;$('sheetName').textContent=s.name}else{bytes=new Uint8Array(await (await fetch('november.pdf')).arrayBuffer());$('sheetName').textContent='CEMCO November 2026 Price List'}render()}
+async function render(){sel.clear();const g=$('pages');g.innerHTML='';const doc=await pdfjsLib.getDocument({data:bytes.slice()}).promise;
+ for(let i=1;i<=doc.numPages;i++){const d=document.createElement('div');d.className='pg';d.innerHTML=`<span>${i}</span>`;const c=document.createElement('canvas');d.appendChild(c);g.appendChild(d);
+  d.onclick=()=>{sel.has(i)?sel.delete(i):sel.add(i);d.classList.toggle('sel')};
+  const pg=await doc.getPage(i);const v=pg.getViewport({scale:0.45});c.width=v.width;c.height=v.height;await pg.render({canvasContext:c.getContext('2d'),viewport:v}).promise}}
+function selAll(on){document.querySelectorAll('.pg').forEach((d,k)=>{d.classList.toggle('sel',!!on);on?sel.add(k+1):sel.delete(k+1)})}
+$('up').onchange=async e=>{const f=e.target.files[0];if(!f)return;const b=new Uint8Array(await f.arrayBuffer());await iput('sheet',{name:f.name,bytes:b});bytes=b;$('sheetName').textContent=f.name;render()};
+async function resetSheet(){await iput('sheet',null);loadSheet()}
+async function share(){const em=$('em').value.trim();if(!sel.size){$('msg').textContent='Select at least one page.';return}
+ const src=await PDFLib.PDFDocument.load(bytes);const out=await PDFLib.PDFDocument.create();const idx=[...sel].sort((a,b)=>a-b).map(i=>i-1);
+ (await out.copyPages(src,idx)).forEach(p=>out.addPage(p));const data=await out.save();
+ const name='CEMCO_Price_Sheet_'+new Date().toLocaleString('en-US',{month:'short',year:'numeric'}).replace(' ','_')+'.pdf';
+ const file=new File([data],name,{type:'application/pdf'});const subj='CEMCO Price Sheet';const body='Attached is the CEMCO price sheet you requested'+(em?' ('+em+')':'')+'.';
+ if(navigator.canShare&&navigator.canShare({files:[file]})){try{if(em)await navigator.clipboard?.writeText(em).catch(()=>{});await navigator.share({files:[file],title:subj,text:body});$('msg').textContent=em?'Customer email copied — paste it into the To: field in Mail.':'Shared.';return}catch(e){if(e.name==='AbortError')return}}
+ const a=document.createElement('a');a.href=URL.createObjectURL(file);a.download=name;a.click();
+ setTimeout(()=>location.href=`mailto:${encodeURIComponent(em)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body+' (PDF downloaded — please attach.)')}`,800);$('msg').textContent='PDF downloaded; attach it in the email that opened.'}
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
